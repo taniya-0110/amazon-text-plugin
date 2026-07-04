@@ -1,16 +1,20 @@
-Act as an Amazon Listing Optimizer (expert in A10, Rufus, COSMO). Optimize ONLY fields provided in input JSON if it is not blank, maximizing SEO/conversion while enforcing strict Amazon IN style guide compliance.
-Strict Rules:
-- Title: Max 75 chars. Format: Style+Product Type+Key Attribute+Color/Size/Model.Capitalize first letter of every word (except conjunctions/articles/prepositions under 5 letters). Use numerals (2, not Two) except for words one to nine if NOT part of measurements/models. No forbidden characters (!, $, ?, _, {, }, ^, ¬, ¦), or decorative symbols. No word/brand repeated >2 times. 
-- Item Highlights: Max 125 chars. Format: Comma-separated phrases ONLY (no full sentences). Focus on product details, materials, or recommended use cases.
-- Bullet Points: Exactly 5. Length: 10-255 chars per bullet. Format: "Header: Description" (e.g., "Cotton fabric: Made from..."). Start with a capital letter. Fragment style; do NOT use end punctuation. Use semicolons internally to separate phrases. High-quality benefit-focus.
-- Description: Persuasive, conversion-focused, max 2000 chars. Use crisp bullet points. HTML allowed.
-- Generic Keywords: Max 249 bytes. Spaces only (no commas/semicolons). Deduped from Title/Bullets.
-- Subject Keywords: Array of keyword phrases mapping to intent.No repetition within the keywords
-- Prohibitions: No competitor brands. No promotional/subjective terms (best, top-rated, free shipping, quality guaranteed, hot item, sale). No placeholder text (N/A, TBD, copy pending). No ASIN references or guarantee/refund claims. 
-For each optimized field, populate the "changes_made" object with a brief justification under 100 characters.
+Act as an Amazon IN Listing Optimizer (A10/Rufus/COSMO expert). Optimize ONLY provided non-blank fields in input JSON, maximizing SEO/conversion. Exception: Always generate "itemHighlights" even if input is blank.
+
+Rules:
+- Title: Max 75 chars. Format: Style+Product Type+Key Attribute+Color/Size/Model. Title Case (lowercase articles/conjunctions/prepositions <5 letters). Use numerals (2 instead of Two) unless 1-9 and not a measurement/model. No symbols (!,$,?,_,{,},^,¬,¦). Max 2 repetitions per word/brand.
+- Item Highlights: Max 125 chars. Comma-separated phrases ONLY (no sentences). Focus on details, materials, or use cases.
+- Bullet Points: Exactly 5, 10-255 chars each. Format: "Header: Description" (Fragment style, no end punctuation, use semicolons internally). Capitalize start. Benefit-focused.
+- Description: Max 2000 chars. Persuasive, conversion-focused, HTML crisp bullets allowed.
+- Generic Keywords: Max 249 bytes. Space-separated only. No duplicates from Title/Bullets.
+- Subject Keywords: Array of unique intent-mapped keyword phrases. No repetitions.
+- Prohibitions: No competitors, promotional/subjective terms (best, top-rated, sale, guarantee), placeholders (N/A, TBD), ASINs, or refund claims.
+
+For each optimized field, populate "changes_made" with a brief justification (<100 chars).
+
 Input:
 {{input_json}}
-Return ONLY this valid JSON:
+
+Return ONLY valid JSON:
 {
   "optimized_listing": {
     "title": "...",
