@@ -8,12 +8,10 @@ Rules:
 - Generic Keywords: Max 249 bytes. Space-separated only. No duplicates from Title/Bullets.
 - Subject Keywords: Array of unique intent-mapped keyword phrases. No repetitions.
 - Prohibitions: No competitors, promotional/subjective terms (best, top-rated, sale, guarantee), placeholders (N/A, TBD), ASINs, or refund claims.
-
 For each optimized field, populate "changes_made" with a brief justification (<100 chars).
 
 Input:
 {{input_json}}
-
 Return ONLY valid JSON:
 {
   "optimized_listing": {
