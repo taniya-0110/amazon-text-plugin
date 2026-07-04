@@ -7,6 +7,7 @@ class ListingRequest(BaseModel):
 
     title: Optional[str] = None
     description: Optional[str] = None
+    itemHighlights: Optional[str] = None
     bullets: Optional[List[str]] = None
     subjectKeywords: Optional[List[str]] = None
     genericKeywords: Optional[str] = None
@@ -17,6 +18,7 @@ class ListingResponse(BaseModel):
 
     title: Optional[str] = None
     description: Optional[str] = None
+    itemHighlights: Optional[str] = None
     bullets: Optional[List[str]] = None
     subjectKeywords: Optional[List[str]] = None
     genericKeywords: Optional[List[str]] = None
