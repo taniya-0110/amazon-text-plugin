@@ -39,6 +39,7 @@ EXPECTED_FIELD_TYPES = {
     "bulletPoints": list,
     "description": str,
     "genericKeywords": str,
+    "itemHighlights": str,
     "subjectKeywords": list,
 }
 
@@ -216,6 +217,7 @@ title
 bulletPoints
 itemHighlights
 description
+itemHighlights
 genericKeywords
 subjectKeywords
 
@@ -223,7 +225,7 @@ Field type rules:
 title must be a string.
 bulletPoints must be an array of strings.
 description must be a string.
-itemHighlighs must be a string.
+itemHighlights must be a string.
 genericKeywords must be a single string.
 subjectKeywords must be an array of keyword phrases.
 
