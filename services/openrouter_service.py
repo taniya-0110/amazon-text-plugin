@@ -2,11 +2,12 @@ import os
 import json
 import traceback
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError  # For precise catch of 400-range errors
 
 from utils.parser import parse_json_response
 
@@ -17,14 +18,34 @@ PROMPT_PATH = BASE_DIR / "prompts" / "amazon_prompt.txt"
 
 load_dotenv(dotenv_path=ENV_PATH)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# --- LOAD & MANAGE 8 API KEYS ---
+# Expects comma-separated values in your .env
+api_keys_raw = os.getenv("GEMINI_API_KEYS")
 
-if not GEMINI_API_KEY:
-    raise ValueError(f"GEMINI_API_KEY not found in: {ENV_PATH}")
+if api_keys_raw:
+    API_KEYS: List[str] = [k.strip() for k in api_keys_raw.split(",") if k.strip()]
+else:
+    # Fallback to single key if your .env variable name isn't pluralized yet
+    single_key = os.getenv("GEMINI_API_KEY")
+    API_KEYS = [single_key] if single_key else []
 
+if not API_KEYS:
+    raise ValueError(f"No GEMINI_API_KEYS found in: {ENV_PATH}")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Global pointer to remember the index of the currently functional API Key
+CURRENT_KEY_INDEX = 0
 
+def get_current_client() -> genai.Client:
+    """Instantiates and returns a GenAI client using the current active key."""
+    global CURRENT_KEY_INDEX
+    active_key = API_KEYS[CURRENT_KEY_INDEX]
+    
+    # Masking key for console output safety
+    masked_key = f"{active_key[:8]}...{active_key[-4:]}" if len(active_key) > 12 else "INVALID_KEY_LEN"
+    print(f"--> [SYSTEM] Using API Key #{CURRENT_KEY_INDEX + 1}: {masked_key}")
+    
+    return genai.Client(api_key=active_key)
+# -----------------------------------------------------
 
 MODELS = [
     "gemini-2.5-flash",
@@ -234,6 +255,7 @@ Never combine genericKeywords and subjectKeywords.
 
 
 def optimize_listing(listing):
+    global CURRENT_KEY_INDEX
     original_fields = get_provided_fields(listing)
 
     if not original_fields:
@@ -246,66 +268,96 @@ def optimize_listing(listing):
     print("Total models:", len(MODELS))
     print("Input fields:", list(original_fields.keys()))
 
-    last_error = None
+    # Track how many keys we have actively attempted in this specific runtime sequence
+    keys_attempted = 0
+    total_keys = len(API_KEYS)
 
-    for model in MODELS:
-        try:
-            print(f"\nTrying model: {model}")
+    # Loop allows switching keys and restarting the model evaluation cycle completely
+    while keys_attempted < total_keys:
+        last_error = None
+        
+        # Instantiate current client config
+        client = get_current_client()
 
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=0.3,
-                    max_output_tokens=5000,
-                    response_mime_type="application/json",
-                ),
-            )
+        for model in MODELS:
+            try:
+                print(f"\nTrying model: {model}")
 
-            raw_output = response.text
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        temperature=0.3,
+                        max_output_tokens=5000,
+                        response_mime_type="application/json",
+                    ),
+                )
 
-            if not raw_output or not raw_output.strip():
-                raise RuntimeError(f"{model} returned empty content")
+                raw_output = response.text
 
-            print(f"Raw output from {model}:")
-            print(raw_output[:1500])
+                if not raw_output or not raw_output.strip():
+                    raise RuntimeError(f"{model} returned empty content")
 
-            parsed = parse_json_response(raw_output)
+                print(f"Raw output from {model}:")
+                print(raw_output[:1500])
 
-            if not isinstance(parsed, dict):
-                raise RuntimeError("Gemini returned invalid JSON structure")
+                parsed = parse_json_response(raw_output)
 
-            if "optimized_listing" not in parsed:
-                raise RuntimeError("Missing optimized_listing in Gemini response")
+                if not isinstance(parsed, dict):
+                    raise RuntimeError("Gemini returned invalid JSON structure")
 
-            optimized_data = parsed["optimized_listing"]
+                if "optimized_listing" not in parsed:
+                    raise RuntimeError("Missing optimized_listing in Gemini response")
 
-            validated_output = validate_optimized_response(
-                optimized_data=optimized_data,
-                original_fields=original_fields
-            )
+                optimized_data = parsed["optimized_listing"]
 
-            changes_made = normalize_changes_made(
-                changes_made=parsed.get("changes_made"),
-                original_fields=original_fields
-            )
+                validated_output = validate_optimized_response(
+                    optimized_data=optimized_data,
+                    original_fields=original_fields
+                )
 
-            print(f"Success with model: {model}")
+                changes_made = normalize_changes_made(
+                    changes_made=parsed.get("changes_made"),
+                    original_fields=original_fields
+                )
 
-            return {
-                "optimized_listing": validated_output,
-                "changes_made": changes_made,
-                "model_used": model
-            }
+                print(f"Success with model: {model}")
 
-        except Exception as error:
-            print(f"\nModel failed: {model}")
-            print(type(error).__name__)
-            print(error)
-            traceback.print_exc()
+                return {
+                    "optimized_listing": validated_output,
+                    "changes_made": changes_made,
+                    "model_used": model
+                }
 
-            last_error = error
-            continue
+            except APIError as api_error:
+                # Catch concrete SDK response codes inside range 400-499 (e.g. 429 Resource Exhausted)
+                status_code = getattr(api_error, 'code', None)
+                print(f"\n[API ERROR] Model {model} failed with HTTP Status: {status_code}")
+                
+                if status_code and (400 <= status_code < 500):
+                    print("--> Error falls within 400 range. Invalidating key and triggering full rotation sequence.")
+                    last_error = api_error
+                    break # Break out of the MODELS loop to execute the key shift block below
+                
+                # If it's a 5xx system error, fallback to the next model layout instead of killing the key
+                last_error = api_error
+                continue
 
-    raise RuntimeError(f"All Gemini models failed. Last error: {last_error}")
+            except Exception as error:
+                print(f"\nModel failed due to non-API internal error: {model}")
+                print(type(error).__name__)
+                print(error)
+                traceback.print_exc()
+
+                last_error = error
+                continue
+        
+        # --- KEY ROTATION ORCHESTRATION ---
+        # If execution reaches here, the current API key either encountered a 400-range block 
+        # or completely exhausted all available fallback models. Switch keys and loop back.
+        keys_attempted += 1
+        CURRENT_KEY_INDEX = (CURRENT_KEY_INDEX + 1) % total_keys
+        print(f"\n[ALERT] Shifting control sequence to backup layout. Next index: {CURRENT_KEY_INDEX}")
+
+    raise RuntimeError(f"All {total_keys} API keys and internal model variations have been completely exhausted. Last error: {last_error}")
